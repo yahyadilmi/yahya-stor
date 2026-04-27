@@ -1,0 +1,227 @@
+﻿<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>متجر دهاناتي | Glass Edition</title>
+    
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-storage-compat.js"></script>
+
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --glass: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --accent: #00d2ff;
+            --success: #2ecc71;
+            --danger: #e74c3c;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Cairo', sans-serif; }
+        
+        body {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            background-attachment: fixed;
+            color: white;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* تصميم الزجاج */
+        .glass-panel {
+            background: var(--glass);
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        header { padding: 1.5rem; text-align: center; border-bottom: 1px solid var(--glass-border); }
+        .logo { font-size: 2.2rem; font-weight: 700; color: var(--accent); cursor: pointer; text-shadow: 0 0 10px var(--accent); }
+
+        /* الفيديو */
+        .video-wrapper { width: 90%; max-width: 900px; height: 400px; margin: 20px auto; border-radius: 20px; overflow: hidden; }
+        #promoVideo { width: 100%; height: 100%; object-fit: cover; }
+
+        .container { padding: 30px 5%; }
+        .products-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 25px; }
+
+        .product-card { border-radius: 20px; padding: 15px; transition: 0.3s; text-align: center; }
+        .product-card:hover { transform: translateY(-10px); }
+        .product-img { width: 100%; height: 220px; border-radius: 15px; object-fit: cover; margin-bottom: 15px; }
+
+        /* لوحة التحكم */
+        #adminPanel { display: none; padding: 20px; margin: 15px; border-radius: 20px; flex-direction: column; gap: 15px; }
+        
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3000; width: 90%; max-width: 450px; padding: 30px; border-radius: 20px; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 2500; }
+
+        input, button { width: 100%; padding: 12px; margin-top: 10px; border-radius: 10px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: white; }
+        .btn-main { background: linear-gradient(45deg, var(--accent), #3a7bd5); cursor: pointer; border: none; font-weight: bold; }
+        
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.8rem; }
+        th, td { padding: 10px; border: 1px solid var(--glass-border); }
+    </style>
+</head>
+<body>
+
+    <div id="adminPanel" class="glass-panel">
+        <div style="display:flex; justify-content: space-between; align-items:center;">
+            <h3><i class="fas fa-user-shield"></i> لوحة المدير</h3>
+            <button onclick="logout()" style="width:auto; background:var(--danger);">خروج</button>
+        </div>
+        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:10px;">
+            <button onclick="openModal('addModal')" class="btn-main">+ إضافة منتج</button>
+            <button onclick="setExternalVideo()" class="btn-main">تغيير الفيديو</button>
+        </div>
+        <div style="max-height: 150px; overflow-y: auto;">
+            <table id="ordersTable">
+                <thead><tr><th>الزبون</th><th>المنتج</th><th>حذف</th></tr></thead>
+                <tbody id="ordersBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <header><div class="logo" id="logo">دهاناتي.</div></header>
+
+    <div class="video-wrapper glass-panel">
+        <video id="promoVideo" autoplay muted loop playsinline>
+            <source src="https://assets.mixkit.co/videos/preview/mixkit-decorator-painting-a-wall-with-a-roller-40348-large.mp4">
+        </video>
+    </div>
+
+    <div class="container"><div id="productsGrid" class="products-grid"></div></div>
+
+    <div class="modal glass-panel" id="orderModal">
+        <h3 id="orderTitle">طلب منتج</h3>
+        <input type="text" id="custName" placeholder="الاسم الكامل">
+        <input type="tel" id="custPhone" placeholder="رقم الهاتف">
+        <input type="text" id="custWilaya" placeholder="الولاية">
+        <button class="btn-main" onclick="processOrder()">تأكيد الطلب</button>
+        <button onclick="closeModals()">إلغاء</button>
+    </div>
+
+    <div class="modal glass-panel" id="addModal">
+        <h3>إضافة منتج للسحابة</h3>
+        <input type="text" id="newProdName" placeholder="اسم المنتج">
+        <input type="number" id="newProdPrice" placeholder="السعر">
+        <input type="file" id="newProdImg" accept="image/*">
+        <button class="btn-main" id="saveBtn" onclick="uploadProduct()">حفظ</button>
+        <button onclick="closeModals()">إلغاء</button>
+    </div>
+
+    <div class="overlay" id="overlay" onclick="closeModals()"></div>
+
+    <script>
+        // دمج إعداداتك الجديدة
+        const firebaseConfig = {
+            apiKey: "AIzaSyBx67-616RH8u2iKwoe4H6tDCr2QzNOe-0",
+            authDomain: "yayaya-fec4e.firebaseapp.com",
+            databaseURL: "https://yayaya-fec4e-default-rtdb.firebaseio.com",
+            projectId: "yayaya-fec4e",
+            storageBucket: "yayaya-fec4e.firebasestorage.app",
+            messagingSenderId: "341055331706",
+            appId: "1:341055331706:web:4b95974a3ad5583078cac3"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const storage = firebase.storage();
+        
+        const TG_TOKEN = "8646265411:AAGlNRIXnM49WpTtBgC2dAw6FjXQD4d43t0";
+        const TG_CHAT_ID = "7614945559";
+        let currentTargetProduct = "";
+
+        function loadAll() {
+            // جلب المنتجات
+            db.ref('products').on('value', (snap) => {
+                const grid = document.getElementById('productsGrid');
+                grid.innerHTML = '';
+                const isAdmin = sessionStorage.getItem('isAdmin') === 'true';
+                if(isAdmin) document.getElementById('adminPanel').style.display = 'flex';
+
+                snap.forEach(child => {
+                    const p = child.val();
+                    grid.innerHTML += `
+                        <div class="glass-panel product-card">
+                            <img src="${p.img}" class="product-img">
+                            <h3>${p.name}</h3>
+                            <p style="color:var(--accent); font-weight:bold">${p.price} دج</p>
+                            <button class="btn-main" onclick="openOrderModal('${p.name}')">اطلب الآن</button>
+                            ${isAdmin ? `<button onclick="deleteProduct('${child.key}')" style="background:red; margin-top:10px; padding:5px;">حذف</button>` : ''}
+                        </div>`;
+                });
+            });
+
+            // جلب الطلبات للمدير
+            db.ref('orders').on('value', (snap) => {
+                const tbody = document.getElementById('ordersBody');
+                tbody.innerHTML = '';
+                snap.forEach(child => {
+                    const o = child.val();
+                    tbody.innerHTML += `<tr><td>${o.name}</td><td>${o.product}</td><td><button onclick="deleteOrder('${child.key}')">X</button></td></tr>`;
+                });
+            });
+        }
+
+        async function uploadProduct() {
+            const name = document.getElementById('newProdName').value;
+            const price = document.getElementById('newProdPrice').value;
+            const file = document.getElementById('newProdImg').files[0];
+            if(!name || !price || !file) return alert("أكمل البيانات");
+
+            const btn = document.getElementById('saveBtn');
+            btn.innerText = "جاري الرفع..."; btn.disabled = true;
+
+            try {
+                const fileRef = storage.ref('products/' + Date.now() + "_" + file.name);
+                await fileRef.put(file);
+                const img = await fileRef.getDownloadURL();
+                await db.ref('products').push({ name, price, img });
+                closeModals();
+            } catch(e) { alert("خطأ في الرفع: تأكد من تفعيل Storage في Firebase"); }
+            btn.innerText = "حفظ"; btn.disabled = false;
+        }
+
+        async function processOrder() {
+            const name = document.getElementById('custName').value;
+            const phone = document.getElementById('custPhone').value;
+            const address = document.getElementById('custWilaya').value;
+            if(!name || !phone) return alert("أدخل اسمك وهاتفك");
+
+            const orderData = { name, phone, address, product: currentTargetProduct, date: new Date().toLocaleString() };
+            await db.ref('orders').push(orderData);
+            
+            const msg = `📦 طلب جديد من السحابة:\nالمنتج: ${currentTargetProduct}\nالاسم: ${name}\nالهاتف: ${phone}\nالعنوان: ${address}`;
+            fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_CHAT_ID}&text=${encodeURIComponent(msg)}`);
+            
+            alert("تم الطلب بنجاح!");
+            closeModals();
+        }
+
+        function setExternalVideo() {
+            const url = prompt("أدخل رابط الفيديو (YouTube أو رابط مباشر):");
+            if(url) document.getElementById('promoVideo').src = url;
+        }
+
+        // الدخول السري (3 ثواني على اللوجو)
+        let timer;
+        document.getElementById('logo').onmousedown = () => timer = setTimeout(() => {
+            if(prompt("كلمة السر:") === "1234") { sessionStorage.setItem('isAdmin', 'true'); location.reload(); }
+        }, 3000);
+
+        function openOrderModal(p) { currentTargetProduct = p; document.getElementById('orderTitle').innerText = "طلب: " + p; openModal('orderModal'); }
+        function openModal(id) { document.getElementById(id).style.display = 'block'; document.getElementById('overlay').style.display = 'block'; }
+        function closeModals() { document.querySelectorAll('.modal, .overlay').forEach(el => el.style.display = 'none'); }
+        function deleteProduct(id) { if(confirm("حذف المنتج؟")) db.ref('products/'+id).remove(); }
+        function deleteOrder(id) { db.ref('orders/'+id).remove(); }
+        function logout() { sessionStorage.removeItem('isAdmin'); location.reload(); }
+
+        loadAll();
+    </script>
+</body>
+</html>
